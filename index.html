@@ -22,8 +22,9 @@
       }
       #panel {
         position: fixed;
-        left: 16px;
-        bottom: 14px;
+        left: 0px;
+        top: 14px;
+        width: 100%;
         display: flex;
         flex-direction: column;
         gap: 10px;
@@ -43,7 +44,7 @@
         min-width: 70px;
       }
       #panel input[type='range'] {
-        width: 140px;
+        width: 100%;
       }
       #info {
         opacity: 0.6;
@@ -58,7 +59,7 @@
     <div id="panel">
       <div class="row">
         <label for="depth">Detail</label>
-        <input id="depth" type="range" min="0" max="7" step="1" value="4" />
+        <input id="depth" type="range" min="0" max="10" step="1" value="4" />
         <span id="depth-value">4</span>
       </div>
       <div class="row">

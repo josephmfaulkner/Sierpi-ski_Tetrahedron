@@ -9,7 +9,7 @@ const depthValue = document.getElementById('depth-value');
 const colorPicker = document.getElementById('color');
 
 const DEFAULT_COLOR = '#3366ff';
-const MAX_DEPTH = 7;
+const MAX_DEPTH = 10;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x05060a);
@@ -33,7 +33,7 @@ container.appendChild(renderer.domElement);
 
 // Single directional light, as requested.
 const light = new THREE.DirectionalLight(0xffffff, 3.2);
-light.position.set(4, 5, 6);
+light.position.set(6, 5, 4);
 scene.add(light);
 
 const material = new THREE.MeshStandardMaterial({
@@ -72,8 +72,8 @@ const controls = new OrbitControls(camera, renderer.domElement);
 controls.enablePan = false;
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
-controls.minDistance = 0.3;
-controls.maxDistance = 15;
+controls.minDistance = 0.03;
+controls.maxDistance = 150;
 
 setDepth(parseInt(depthSlider.value, 10));
 
