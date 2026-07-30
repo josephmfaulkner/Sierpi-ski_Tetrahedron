@@ -36,6 +36,20 @@ const light = new THREE.DirectionalLight(0xffffff, 3.2);
 light.position.set(6, 5, 4);
 scene.add(light);
 
+// Three point lights add colored fill/rim light: neutral white, a warm
+// off-white, and a cool off-white, each from a different side.
+const pointLightWhite = new THREE.PointLight(0xffffff, 25);
+pointLightWhite.position.set(-3.5, 3, 2.5);
+scene.add(pointLightWhite);
+
+const pointLightWarm = new THREE.PointLight(0xffd9a6, 25);
+pointLightWarm.position.set(3.5, 2, -2);
+scene.add(pointLightWarm);
+
+const pointLightCool = new THREE.PointLight(0xb7d4ff, 25);
+pointLightCool.position.set(0, -4, 1.5);
+scene.add(pointLightCool);
+
 const material = new THREE.MeshStandardMaterial({
   color: DEFAULT_COLOR,
   flatShading: true,
