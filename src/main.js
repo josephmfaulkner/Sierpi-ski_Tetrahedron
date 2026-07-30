@@ -379,10 +379,10 @@ animateToggle.addEventListener('change', () => {
   autoPlay = animateToggle.checked;
 });
 
-speedValue.textContent = `${speedMultiplier.toFixed(1)}×`;
+speedValue.textContent = `${speedMultiplier}`;
 speedSlider.addEventListener('input', () => {
   speedMultiplier = parseFloat(speedSlider.value);
-  speedValue.textContent = `${speedMultiplier.toFixed(1)}×`;
+  speedValue.textContent = `${speedMultiplier}`;
 });
 
 sideDepthSlider.addEventListener('input', () => {
