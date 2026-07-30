@@ -78,6 +78,49 @@ camera.up.set(0, 0, 1);
 camera.position.copy(INITIAL_CAMERA_POSITION);
 camera.lookAt(F);
 
+const CAMERA_TO_F_DISTANCE = camera.position.distanceTo(F);
+
+// How far (in world units, along Z) a screen point needs to project from F
+// to land at a given normalized screen height (-1 bottom, +1 top), found
+// by bisection since perspective projection isn't linear in the offset.
+// Only the Z coordinate ever varies here — X and Y stay locked to F's.
+function screenYAtZOffset(zOffset) {
+  return new THREE.Vector3(F.x, F.y, F.z + zOffset).project(camera).y;
+}
+// Scans outward from 0 in both directions to find the nearest point where
+// screenYAtZOffset crosses targetY, then bisects — direction-agnostic, so
+// it doesn't depend on assuming which way Z maps to screen-up for this
+// particular camera angle.
+function findZOffsetForScreenY(targetY) {
+  const f = (z) => screenYAtZOffset(z) - targetY;
+  const step = 0.02;
+  const maxSteps = Math.ceil((CAMERA_TO_F_DISTANCE * 3) / step);
+  for (const dir of [1, -1]) {
+    let prevZ = 0;
+    let prevVal = f(0);
+    for (let i = 1; i <= maxSteps; i++) {
+      const z = dir * i * step;
+      const val = f(z);
+      if (prevVal < 0 !== val < 0) {
+        let lo = prevZ;
+        let hi = z;
+        for (let j = 0; j < 50; j++) {
+          const mid = (lo + hi) / 2;
+          if (f(mid) < 0 === prevVal < 0) lo = mid;
+          else hi = mid;
+        }
+        return (lo + hi) / 2;
+      }
+      prevZ = z;
+      prevVal = val;
+    }
+  }
+  console.warn('findZOffsetForScreenY: no crossing found, defaulting to 0');
+  return 0;
+}
+// A little short of the very top edge (+1), so the tip isn't clipped.
+const DEFAULT_Z_OFFSET = findZOffsetForScreenY(0.85);
+
 // A second, never-rendered camera exists purely to receive mouse/wheel
 // input via OrbitControls, exactly as the real camera used to. Its orbit
 // state (orientation + distance from F) is converted every frame into a
@@ -139,14 +182,58 @@ const material = new THREE.MeshStandardMaterial({
   side: THREE.DoubleSide,
 });
 
-// The pyramid rotates and scales about this pivot, which sits exactly at F.
-// The geometry itself is built in coordinates relative to the apex (apex at
-// local origin — see sierpinski.js), so the mesh needs no offset: any
-// rotation/scale the pivot receives leaves local (0,0,0) — the apex —
-// fixed at F, in world space, always.
+// The pyramid rotates and scales about this pivot, which sits at F plus a
+// vertical (Z-only) offset the user can adjust — see the right-click-drag
+// handler below. The geometry itself is built in coordinates relative to
+// the apex (apex at local origin — see sierpinski.js), so the mesh needs
+// no offset of its own: any rotation/scale the pivot receives leaves local
+// (0,0,0) — the apex — fixed at pivot.position, in world space, always.
 const pivot = new THREE.Group();
-pivot.position.copy(F);
 scene.add(pivot);
+
+let zOffset = DEFAULT_Z_OFFSET;
+function applyPivotPosition() {
+  pivot.position.set(F.x, F.y, F.z + zOffset);
+}
+applyPivotPosition();
+
+// Right-click-drag moves the pyramid up/down along Z only — X and Y stay
+// completely locked to F's, and rotation/zoom (driven separately by the
+// left-drag/scroll-controlled inputCamera) are untouched. Since it's the
+// pivot's position that's being dragged, and that position is exactly what
+// stays screen-locked through zoom/rotation, this has a direct, consistent
+// pixel-to-world relationship regardless of current zoom level.
+renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
+
+let isDraggingZ = false;
+let lastDragClientY = 0;
+
+renderer.domElement.addEventListener('pointerdown', (e) => {
+  if (e.button !== 2) return;
+  isDraggingZ = true;
+  lastDragClientY = e.clientY;
+  renderer.domElement.setPointerCapture(e.pointerId);
+  e.preventDefault();
+});
+
+renderer.domElement.addEventListener('pointermove', (e) => {
+  if (!isDraggingZ) return;
+  const deltaY = e.clientY - lastDragClientY;
+  lastDragClientY = e.clientY;
+  const worldUnitsPerPixel =
+    (2 * CAMERA_TO_F_DISTANCE * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))) / window.innerHeight;
+  zOffset -= deltaY * worldUnitsPerPixel;
+  applyPivotPosition();
+});
+
+renderer.domElement.addEventListener('pointerup', (e) => {
+  if (e.button !== 2) return;
+  isDraggingZ = false;
+  renderer.domElement.releasePointerCapture(e.pointerId);
+});
+renderer.domElement.addEventListener('pointercancel', () => {
+  isDraggingZ = false;
+});
 
 let mesh = null;
 let currentSpineDepth = -1;
