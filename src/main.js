@@ -92,12 +92,11 @@ controls.target.copy(F);
 controls.enablePan = false;
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
-// Wide open in both directions — the adaptive geometry below has real room
-// to keep chasing the apex when zooming in, or revealing ancestor context
-// when zooming out, so "infinite" isn't bounded by a shallow dolly limit
-// in either direction anymore.
-controls.minDistance = 1e-7;
-controls.maxDistance = 1e9;
+// These only need to be wide enough that updatePivotFromInput's own
+// distance-renormalization (below) never actually pushes distance out this
+// far in ordinary use — they're a safety net, not the real zoom limit.
+controls.minDistance = 1e-9;
+controls.maxDistance = 1e11;
 controls.update();
 
 const INITIAL_DISTANCE = inputCamera.position.distanceTo(F);
@@ -169,14 +168,44 @@ let lastTriangleCount = setDetail(BASE_SPINE_DEPTH, 0);
 // relative to its own fixed orientation reproduces the same apparent spin.)
 const rotationScratch = new THREE.Quaternion();
 
+// Once zoom pushes spineDepth/outLevel past their cap, the geometry stops
+// changing — so if `distance` itself just kept shrinking/growing from
+// there, the view would eventually hit OrbitControls' own hard min/max
+// and simply stop responding. Instead, `resetLevel` absorbs however many
+// extra "octaves" of zoom have happened past the cap: every time the
+// natural log2(zoom) would exceed the cap's span, distance is silently
+// doubled (or halved, zooming out) — undoing that octave — and resetLevel
+// tracks it instead. This is invisible because of the fractal's exact
+// self-similarity: the capped geometry's own apex corner, magnified 2x,
+// looks the same as the whole capped geometry unmagnified, so swapping
+// back to "unmagnified" is unnoticeable. `distance` therefore never has
+// to leave a bounded, comfortable range no matter how long the user keeps
+// scrolling in one direction, while the numbers shown to the user (built
+// from logZoom + resetLevel) keep growing/shrinking forever, genuinely
+// without bound.
+const SPINE_SPAN = MAX_SPINE_DEPTH - BASE_SPINE_DEPTH;
+let resetLevel = 0;
+
 function updatePivotFromInput() {
   controls.update();
 
   rotationScratch.copy(camera.quaternion).multiply(inputCamera.quaternion.clone().invert());
   pivot.quaternion.copy(rotationScratch);
 
-  const distance = inputCamera.position.distanceTo(F);
-  const zoom = INITIAL_DISTANCE / distance;
+  let logZoom = Math.log2(INITIAL_DISTANCE / inputCamera.position.distanceTo(F));
+
+  while (logZoom > SPINE_SPAN) {
+    inputCamera.position.sub(F).multiplyScalar(2).add(F);
+    resetLevel += 1;
+    logZoom -= 1;
+  }
+  while (logZoom < -MAX_OUT_LEVEL) {
+    inputCamera.position.sub(F).multiplyScalar(0.5).add(F);
+    resetLevel -= 1;
+    logZoom += 1;
+  }
+
+  const zoom = Math.pow(2, logZoom); // always safely bounded now
   pivot.scale.setScalar(zoom);
 
   // Each spine level doubles the apex corner's apparent size, so the depth
@@ -187,7 +216,6 @@ function updatePivotFromInput() {
   // nonzero. The tiny epsilon absorbs floating-point noise from the damped
   // orbit math so zoom values that are "1.0" in every way that matters
   // don't occasionally round up past 0.
-  const logZoom = Math.log2(zoom);
   const EPS = 1e-6;
   const requiredSpineDepth = THREE.MathUtils.clamp(
     BASE_SPINE_DEPTH + Math.ceil(Math.max(0, logZoom - EPS)),
@@ -204,9 +232,17 @@ function updatePivotFromInput() {
     lastTriangleCount = setDetail(requiredSpineDepth, requiredOutLevel);
   }
 
+  // The true cumulative zoom/depth, for display only — unbounded, and
+  // reflects every reset that's happened, unlike the deliberately-bounded
+  // values above that actually drive rendering.
+  const trueLogZoom = logZoom + resetLevel;
+  const displaySpine = BASE_SPINE_DEPTH + Math.max(0, Math.ceil(trueLogZoom - EPS));
+  const displayOut = Math.max(0, Math.ceil(-trueLogZoom - EPS));
+  const trueZoom = Math.pow(2, trueLogZoom);
   const zoomLabel =
-    zoom >= 1e5 || zoom < 1e-3 ? `${zoom.toExponential(2)}` : zoom.toFixed(zoom < 10 ? 3 : 0);
-  info.textContent = `spine ${currentSpineDepth} · horizon ${currentOutLevel} · zoom ×${zoomLabel} — ${lastTriangleCount.toLocaleString()} triangles`;
+    Math.abs(trueLogZoom) > 16 ? trueZoom.toExponential(2) : trueZoom.toFixed(trueZoom < 10 ? 3 : 0);
+
+  info.textContent = `spine ${displaySpine} · horizon ${displayOut} · zoom ×${zoomLabel} — ${lastTriangleCount.toLocaleString()} triangles`;
 }
 
 function animate() {
