@@ -1,11 +1,9 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { buildSierpinskiGeometry, tetrahedronVertices } from './sierpinski.js';
+import { buildAdaptiveSierpinskiGeometry, tetrahedronVertices } from './sierpinski.js';
 
 const container = document.getElementById('app');
 const info = document.getElementById('info');
-const depthSlider = document.getElementById('depth');
-const depthValue = document.getElementById('depth-value');
 const colorPicker = document.getElementById('color');
 const bgTopPicker = document.getElementById('bg-top');
 const bgBottomPicker = document.getElementById('bg-bottom');
@@ -13,7 +11,15 @@ const bgBottomPicker = document.getElementById('bg-bottom');
 const DEFAULT_COLOR = '#3366ff';
 const DEFAULT_BG_TOP = '#1a2036';
 const DEFAULT_BG_BOTTOM = '#05060a';
-const MAX_DEPTH = 10;
+
+// The 3 non-apex corners never subdivide past this — they're the "one
+// resolution" part of the pyramid, far from the zoom focus.
+const SIDE_DEPTH = 3;
+// How deep the apex-chasing spine sits at the default, un-zoomed view.
+const BASE_SPINE_DEPTH = 4;
+// Hard ceiling so recursion (and float32 vertex precision, which runs out
+// around here regardless) can't run away at extreme zoom.
+const MAX_SPINE_DEPTH = 26;
 
 // The fixed point the whole app pivots around: the apex of the tetrahedron.
 // It never changes (it's a fixed point of the fractal's construction) and
@@ -83,7 +89,10 @@ controls.target.copy(F);
 controls.enablePan = false;
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
-controls.minDistance = 0.03;
+// Deep enough that the adaptive spine (below) has real room to keep
+// chasing the apex — this is what "infinite" zoom is bounded by now,
+// rather than a shallow, fixed dolly limit.
+controls.minDistance = 1e-7;
 controls.maxDistance = 150;
 controls.update();
 
@@ -125,9 +134,11 @@ pivot.position.copy(F);
 scene.add(pivot);
 
 let mesh = null;
+let currentSpineDepth = -1;
 
-function setDepth(depth) {
-  const { geometry, triangleCount } = buildSierpinskiGeometry(depth);
+function setSpineDepth(spineDepth) {
+  currentSpineDepth = spineDepth;
+  const { geometry, triangleCount } = buildAdaptiveSierpinskiGeometry(spineDepth, SIDE_DEPTH);
 
   if (mesh) {
     pivot.remove(mesh);
@@ -137,10 +148,10 @@ function setDepth(depth) {
   mesh.position.copy(F).negate();
   pivot.add(mesh);
 
-  info.textContent = `depth ${depth} — ${triangleCount.toLocaleString()} triangles`;
+  return triangleCount;
 }
 
-setDepth(parseInt(depthSlider.value, 10));
+let lastTriangleCount = setSpineDepth(BASE_SPINE_DEPTH);
 
 // Converts the input camera's current orbit (its rotation around F and its
 // distance from F) into an equivalent rotation + uniform scale of the
@@ -159,7 +170,28 @@ function updatePivotFromInput() {
   pivot.quaternion.copy(rotationScratch);
 
   const distance = inputCamera.position.distanceTo(F);
-  pivot.scale.setScalar(INITIAL_DISTANCE / distance);
+  const zoom = INITIAL_DISTANCE / distance;
+  pivot.scale.setScalar(zoom);
+
+  // Each spine level doubles the apex corner's apparent size, so the depth
+  // needed to keep its detail crisp at the current zoom is just log2(zoom)
+  // past the base depth — ceil() alone keeps it a fraction of a level
+  // ahead, which is enough for the rebuild (synchronous, same frame) to
+  // never lag behind what's on screen.
+  // The tiny epsilon absorbs floating-point noise from the damped orbit
+  // math so zoom values that are "1.0" in every way that matters don't
+  // occasionally round up to the next depth level.
+  const requiredDepth = THREE.MathUtils.clamp(
+    BASE_SPINE_DEPTH + Math.ceil(Math.log2(zoom) - 1e-6),
+    0,
+    MAX_SPINE_DEPTH
+  );
+
+  if (requiredDepth !== currentSpineDepth) {
+    lastTriangleCount = setSpineDepth(requiredDepth);
+  }
+
+  info.textContent = `spine depth ${currentSpineDepth} · zoom ×${zoom.toFixed(zoom < 10 ? 2 : 0)} — ${lastTriangleCount.toLocaleString()} triangles`;
 }
 
 function animate() {
@@ -168,13 +200,6 @@ function animate() {
   renderer.render(scene, camera);
 }
 requestAnimationFrame(animate);
-
-depthSlider.max = String(MAX_DEPTH);
-depthSlider.addEventListener('input', () => {
-  const depth = parseInt(depthSlider.value, 10);
-  depthValue.textContent = String(depth);
-  setDepth(depth);
-});
 
 colorPicker.value = DEFAULT_COLOR;
 colorPicker.addEventListener('input', () => {

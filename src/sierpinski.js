@@ -25,7 +25,9 @@ function mid(a, b) {
 
 // Recursively keep the 4 corner tetrahedra (half scale) and discard the
 // central octahedron, down to `depth`. Emits the 4 triangular faces of
-// every leaf tetrahedron as flat vertex triples.
+// every leaf tetrahedron as flat vertex triples. Used uniformly by itself,
+// and as the fixed-resolution building block for the 3 non-apex corners in
+// subdivideAdaptive below.
 function subdivide(v0, v1, v2, v3, depth, out) {
   if (depth === 0) {
     out.push(v0, v1, v2, v0, v1, v3, v0, v2, v3, v1, v2, v3);
@@ -39,20 +41,43 @@ function subdivide(v0, v1, v2, v3, depth, out) {
   const m13 = mid(v1, v3);
   const m23 = mid(v2, v3);
 
-  // Corner 0 keeps v0 (the apex) fixed — this is the branch the camera
-  // dives into forever, and by construction it is itself a half-scale
-  // Sierpiński tetrahedron anchored at the exact same apex point.
   subdivide(v0, m01, m02, m03, depth - 1, out);
   subdivide(m01, v1, m12, m13, depth - 1, out);
   subdivide(m02, m12, v2, m23, depth - 1, out);
   subdivide(m03, m13, m23, v3, depth - 1, out);
 }
 
-export function buildSierpinskiGeometry(depth, edge = 2) {
-  const [v0, v1, v2, v3] = tetrahedronVertices(edge);
-  const verts = [];
-  subdivide(v0, v1, v2, v3, depth, verts);
+// Asymmetric version of the same subdivision: the 3 corners away from the
+// apex (v1, v2, v3's corners) are rendered once, at a fixed `sideDepth` —
+// they're far from the zoom focus, so recursing further into them would
+// just spend triangles on detail nobody will get close enough to see. Only
+// the apex corner (v0's corner, itself an exact half-scale copy of the
+// whole tetrahedron) keeps recursing, one level per step, down `spineDepth`
+// times. Because 3 of the 4 branches stop immediately at every step,
+// triangle count grows linearly in spineDepth instead of exponentially,
+// which is what makes it cheap to chase the apex arbitrarily deep as the
+// pyramid is zoomed into.
+function subdivideAdaptive(v0, v1, v2, v3, spineDepth, sideDepth, out) {
+  const m01 = mid(v0, v1);
+  const m02 = mid(v0, v2);
+  const m03 = mid(v0, v3);
+  const m12 = mid(v1, v2);
+  const m13 = mid(v1, v3);
+  const m23 = mid(v2, v3);
 
+  subdivide(m01, v1, m12, m13, sideDepth, out);
+  subdivide(m02, m12, v2, m23, sideDepth, out);
+  subdivide(m03, m13, m23, v3, sideDepth, out);
+
+  if (spineDepth <= 0) {
+    subdivide(v0, m01, m02, m03, sideDepth, out);
+    return;
+  }
+
+  subdivideAdaptive(v0, m01, m02, m03, spineDepth - 1, sideDepth, out);
+}
+
+function verticesToGeometry(verts, apex) {
   const positions = new Float32Array(verts.length * 3);
   for (let i = 0; i < verts.length; i++) {
     const v = verts[i];
@@ -68,6 +93,17 @@ export function buildSierpinskiGeometry(depth, edge = 2) {
   return {
     geometry,
     triangleCount: verts.length / 3,
-    apex: v0.clone(),
+    apex: apex.clone(),
   };
+}
+
+// Builds a Sierpiński tetrahedron with detail concentrated toward the apex:
+// `spineDepth` controls how many times the apex corner recurses (unbounded
+// zoom-worthy detail near the tip), while `sideDepth` is the fixed depth
+// every other corner stops at, at every step along the way.
+export function buildAdaptiveSierpinskiGeometry(spineDepth, sideDepth, edge = 2) {
+  const [v0, v1, v2, v3] = tetrahedronVertices(edge);
+  const verts = [];
+  subdivideAdaptive(v0, v1, v2, v3, spineDepth, sideDepth, verts);
+  return verticesToGeometry(verts, v0);
 }
