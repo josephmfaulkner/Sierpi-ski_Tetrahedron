@@ -155,6 +155,12 @@ controls.update();
 
 const INITIAL_DISTANCE = inputCamera.position.distanceTo(F);
 
+// Start already zoomed in, rather than at 1x — moves inputCamera to
+// INITIAL_DISTANCE / DEFAULT_ZOOM along the same ray, which is exactly
+// what a zoom of DEFAULT_ZOOM means relative to that reference distance.
+const DEFAULT_ZOOM = 10;
+inputCamera.position.sub(F).multiplyScalar(1 / DEFAULT_ZOOM).add(F);
+
 // Single directional light, as requested.
 const light = new THREE.DirectionalLight(0xffffff, 3.2);
 light.position.set(6, 5, 4);
@@ -254,7 +260,7 @@ function setDetail(spineDepth, outLevel) {
   return triangleCount;
 }
 
-let lastTriangleCount = setDetail(BASE_SPINE_DEPTH, 0);
+let lastTriangleCount = setDetail(BASE_SPINE_DEPTH + Math.ceil(Math.log2(DEFAULT_ZOOM)), 0);
 
 // Converts the input camera's current orbit (its rotation around F and its
 // distance from F) into an equivalent rotation + uniform scale of the
