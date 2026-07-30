@@ -7,12 +7,35 @@ const info = document.getElementById('info');
 const depthSlider = document.getElementById('depth');
 const depthValue = document.getElementById('depth-value');
 const colorPicker = document.getElementById('color');
+const bgTopPicker = document.getElementById('bg-top');
+const bgBottomPicker = document.getElementById('bg-bottom');
 
 const DEFAULT_COLOR = '#3366ff';
+const DEFAULT_BG_TOP = '#1a2036';
+const DEFAULT_BG_BOTTOM = '#05060a';
 const MAX_DEPTH = 10;
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x05060a);
+
+// The background is a small vertical-gradient canvas used as a screen-space
+// backdrop texture, so it always renders top-to-bottom regardless of camera
+// orientation.
+const bgCanvas = document.createElement('canvas');
+bgCanvas.width = 1;
+bgCanvas.height = 256;
+const bgCtx = bgCanvas.getContext('2d');
+const bgTexture = new THREE.CanvasTexture(bgCanvas);
+bgTexture.colorSpace = THREE.SRGBColorSpace;
+scene.background = bgTexture;
+
+function setBackground(topColor, bottomColor) {
+  const gradient = bgCtx.createLinearGradient(0, 0, 0, bgCanvas.height);
+  gradient.addColorStop(0, topColor);
+  gradient.addColorStop(1, bottomColor);
+  bgCtx.fillStyle = gradient;
+  bgCtx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
+  bgTexture.needsUpdate = true;
+}
 
 const camera = new THREE.PerspectiveCamera(
   55,
@@ -109,6 +132,16 @@ colorPicker.value = DEFAULT_COLOR;
 colorPicker.addEventListener('input', () => {
   material.color.set(colorPicker.value);
 });
+
+bgTopPicker.value = DEFAULT_BG_TOP;
+bgBottomPicker.value = DEFAULT_BG_BOTTOM;
+setBackground(DEFAULT_BG_TOP, DEFAULT_BG_BOTTOM);
+
+function updateBackgroundFromControls() {
+  setBackground(bgTopPicker.value, bgBottomPicker.value);
+}
+bgTopPicker.addEventListener('input', updateBackgroundFromControls);
+bgBottomPicker.addEventListener('input', updateBackgroundFromControls);
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
