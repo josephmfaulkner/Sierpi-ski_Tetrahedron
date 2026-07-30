@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sierpiński Tetrahedron — Infinite Zoom</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        background: #05060a;
+        height: 100%;
+      }
+      #app {
+        position: fixed;
+        inset: 0;
+      }
+      #app canvas {
+        display: block;
+      }
+      #info {
+        position: fixed;
+        left: 16px;
+        bottom: 14px;
+        font: 12px/1.4 'SFMono-Regular', Consolas, Menlo, monospace;
+        color: rgba(255, 255, 255, 0.65);
+        background: rgba(0, 0, 0, 0.35);
+        padding: 8px 12px;
+        border-radius: 6px;
+        pointer-events: none;
+        user-select: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <div id="info">initializing…</div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
