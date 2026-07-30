@@ -7,15 +7,26 @@ const info = document.getElementById('info');
 const colorPicker = document.getElementById('color');
 const bgTopPicker = document.getElementById('bg-top');
 const bgBottomPicker = document.getElementById('bg-bottom');
+const animateToggle = document.getElementById('animate');
+const speedSlider = document.getElementById('speed');
+const speedValue = document.getElementById('speed-value');
+const sideDepthSlider = document.getElementById('side-depth');
+const sideDepthValue = document.getElementById('side-depth-value');
 
-const DEFAULT_COLOR = '#3366ff';
-const DEFAULT_BG_TOP = '#1a2036';
+const DEFAULT_COLOR = '#c2c2c2';
+const DEFAULT_BG_TOP = '#6496c3';
 const DEFAULT_BG_BOTTOM = '#05060a';
+
+// Seconds for the automatic animation to double the zoom / complete one
+// full rotation, at speed = 1x.
+const AUTO_ZOOM_DOUBLE_SECONDS = 6;
+const AUTO_ROTATE_PERIOD_SECONDS = 52;
+const Z_AXIS = new THREE.Vector3(0, 0, 1);
 
 // The 3 non-apex/non-ancestor corners never subdivide past this — they're
 // the "one resolution" context part of the pyramid, away from whatever the
-// current zoom focus is.
-const SIDE_DEPTH = 3;
+// current zoom focus is. User-adjustable via the Detail slider.
+let sideDepth = parseInt(sideDepthSlider.value, 10);
 // How deep the apex-chasing spine sits at the default, un-zoomed view.
 const BASE_SPINE_DEPTH = 4;
 // Soft ceilings on how far either direction can go — geometry stays cheap
@@ -144,7 +155,7 @@ let currentOutLevel = -1;
 function setDetail(spineDepth, outLevel) {
   currentSpineDepth = spineDepth;
   currentOutLevel = outLevel;
-  const { geometry, triangleCount } = buildInfiniteZoomGeometry(spineDepth, outLevel, SIDE_DEPTH);
+  const { geometry, triangleCount } = buildInfiniteZoomGeometry(spineDepth, outLevel, sideDepth);
 
   if (mesh) {
     pivot.remove(mesh);
@@ -186,7 +197,24 @@ const rotationScratch = new THREE.Quaternion();
 const SPINE_SPAN = MAX_SPINE_DEPTH - BASE_SPINE_DEPTH;
 let resetLevel = 0;
 
-function updatePivotFromInput() {
+let autoPlay = animateToggle.checked;
+let speedMultiplier = parseFloat(speedSlider.value);
+const autoOffset = new THREE.Vector3();
+
+function updatePivotFromInput(dt) {
+  // While animating, OrbitControls' own listeners are disabled so manual
+  // drag/scroll input can't fight with the automatic motion; toggling
+  // Animate off hands control straight back with no other state to sync,
+  // since both paths ultimately just drive the same inputCamera.position.
+  controls.enabled = !autoPlay;
+
+  if (autoPlay) {
+    autoOffset.copy(inputCamera.position).sub(F);
+    autoOffset.applyAxisAngle(Z_AXIS, ((2 * Math.PI) / AUTO_ROTATE_PERIOD_SECONDS) * speedMultiplier * dt);
+    autoOffset.multiplyScalar(Math.pow(0.5, (speedMultiplier * dt) / AUTO_ZOOM_DOUBLE_SECONDS));
+    inputCamera.position.copy(F).add(autoOffset);
+  }
+
   controls.update();
 
   rotationScratch.copy(camera.quaternion).multiply(inputCamera.quaternion.clone().invert());
@@ -245,12 +273,30 @@ function updatePivotFromInput() {
   info.textContent = `spine ${displaySpine} · horizon ${displayOut} · zoom ×${zoomLabel} — ${lastTriangleCount.toLocaleString()} triangles`;
 }
 
+const clock = new THREE.Clock();
+
 function animate() {
   requestAnimationFrame(animate);
-  updatePivotFromInput();
+  updatePivotFromInput(clock.getDelta());
   renderer.render(scene, camera);
 }
 requestAnimationFrame(animate);
+
+animateToggle.addEventListener('change', () => {
+  autoPlay = animateToggle.checked;
+});
+
+speedValue.textContent = `${speedMultiplier.toFixed(1)}×`;
+speedSlider.addEventListener('input', () => {
+  speedMultiplier = parseFloat(speedSlider.value);
+  speedValue.textContent = `${speedMultiplier.toFixed(1)}×`;
+});
+
+sideDepthSlider.addEventListener('input', () => {
+  sideDepth = parseInt(sideDepthSlider.value, 10);
+  sideDepthValue.textContent = String(sideDepth);
+  lastTriangleCount = setDetail(currentSpineDepth, currentOutLevel);
+});
 
 colorPicker.value = DEFAULT_COLOR;
 colorPicker.addEventListener('input', () => {
