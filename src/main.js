@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { buildSierpinskiGeometry } from './sierpinski.js';
+import { buildSierpinskiGeometry, tetrahedronVertices } from './sierpinski.js';
 
 const container = document.getElementById('app');
 const info = document.getElementById('info');
@@ -14,6 +14,12 @@ const DEFAULT_COLOR = '#3366ff';
 const DEFAULT_BG_TOP = '#1a2036';
 const DEFAULT_BG_BOTTOM = '#05060a';
 const MAX_DEPTH = 10;
+
+// The fixed point the whole app pivots around: the apex of the tetrahedron.
+// It never changes (it's a fixed point of the fractal's construction) and
+// is used both as the static camera's look-at point and as the pyramid's
+// rotation/scale pivot.
+const [F] = tetrahedronVertices();
 
 const scene = new THREE.Scene();
 
@@ -37,22 +43,51 @@ function setBackground(topColor, bottomColor) {
   bgTexture.needsUpdate = true;
 }
 
+const INITIAL_CAMERA_POSITION = new THREE.Vector3(3.2, -3.2, 3);
+
+// The camera that actually renders the scene. It is completely static —
+// set up once, never moved again — so the apex it looks at is always
+// exactly centered on screen no matter what the user does.
 const camera = new THREE.PerspectiveCamera(
   55,
   window.innerWidth / window.innerHeight,
   0.01,
   100
 );
-// The tetrahedron's apex sits on +Z, so Z is treated as "up" — this keeps
-// OrbitControls' rotation feeling natural relative to the pyramid.
 camera.up.set(0, 0, 1);
-camera.position.set(3.2, -3.2, 3);
+camera.position.copy(INITIAL_CAMERA_POSITION);
+camera.lookAt(F);
+
+// A second, never-rendered camera exists purely to receive mouse/wheel
+// input via OrbitControls, exactly as the real camera used to. Its orbit
+// state (orientation + distance from F) is converted every frame into a
+// rotation + uniform scale applied to the pyramid instead of the camera —
+// see updatePivotFromInput() below. Letting OrbitControls drive this proxy
+// (rather than reimplementing drag/zoom by hand) keeps the damping, inertia
+// and zoom limits identical to before.
+const inputCamera = new THREE.PerspectiveCamera(55, 1, 0.01, 100);
+inputCamera.up.set(0, 0, 1);
+inputCamera.position.copy(INITIAL_CAMERA_POSITION);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 container.appendChild(renderer.domElement);
+
+// Orbit around the apex only: no panning, so the target — and therefore
+// the framing — can never move away from the top of the pyramid no matter
+// how the user rotates or zooms.
+const controls = new OrbitControls(inputCamera, renderer.domElement);
+controls.target.copy(F);
+controls.enablePan = false;
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.minDistance = 0.03;
+controls.maxDistance = 150;
+controls.update();
+
+const INITIAL_DISTANCE = inputCamera.position.distanceTo(F);
 
 // Single directional light, as requested.
 const light = new THREE.DirectionalLight(0xffffff, 3.2);
@@ -81,42 +116,55 @@ const material = new THREE.MeshStandardMaterial({
   side: THREE.DoubleSide,
 });
 
+// The pyramid rotates and scales about this pivot, which sits exactly at F.
+// The mesh itself is offset by -F so its apex vertex lands precisely on the
+// pivot's local origin — meaning any rotation/scale the pivot receives
+// leaves that one vertex fixed at F, in world space, always.
+const pivot = new THREE.Group();
+pivot.position.copy(F);
+scene.add(pivot);
+
 let mesh = null;
-let apex = new THREE.Vector3();
 
 function setDepth(depth) {
-  const { geometry, triangleCount, apex: newApex } = buildSierpinskiGeometry(depth);
-  apex = newApex;
+  const { geometry, triangleCount } = buildSierpinskiGeometry(depth);
 
   if (mesh) {
-    scene.remove(mesh);
+    pivot.remove(mesh);
     mesh.geometry.dispose();
   }
   mesh = new THREE.Mesh(geometry, material);
-  scene.add(mesh);
-
-  // The apex is a fixed point of the construction (same for every depth),
-  // but re-assert it so the orbit target never drifts.
-  controls.target.copy(apex);
+  mesh.position.copy(F).negate();
+  pivot.add(mesh);
 
   info.textContent = `depth ${depth} — ${triangleCount.toLocaleString()} triangles`;
 }
 
-// Orbit around the apex only: no panning, so the target — and therefore
-// the framing — can never move away from the top of the pyramid no matter
-// how the user rotates or zooms.
-const controls = new OrbitControls(camera, renderer.domElement);
-controls.enablePan = false;
-controls.enableDamping = true;
-controls.dampingFactor = 0.08;
-controls.minDistance = 0.03;
-controls.maxDistance = 150;
-
 setDepth(parseInt(depthSlider.value, 10));
+
+// Converts the input camera's current orbit (its rotation around F and its
+// distance from F) into an equivalent rotation + uniform scale of the
+// pivot, such that rendering the transformed pyramid with the static real
+// camera produces the exact same image as rendering the untransformed
+// pyramid with the orbiting input camera would. (Perspective dolly-zoom by
+// a factor and inverse-scaling the object about the look-at point are
+// projectively equivalent; rotating the object by the camera's rotation
+// relative to its own fixed orientation reproduces the same apparent spin.)
+const rotationScratch = new THREE.Quaternion();
+
+function updatePivotFromInput() {
+  controls.update();
+
+  rotationScratch.copy(camera.quaternion).multiply(inputCamera.quaternion.clone().invert());
+  pivot.quaternion.copy(rotationScratch);
+
+  const distance = inputCamera.position.distanceTo(F);
+  pivot.scale.setScalar(INITIAL_DISTANCE / distance);
+}
 
 function animate() {
   requestAnimationFrame(animate);
-  controls.update();
+  updatePivotFromInput();
   renderer.render(scene, camera);
 }
 requestAnimationFrame(animate);
