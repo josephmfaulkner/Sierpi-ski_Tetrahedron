@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { buildAdaptiveSierpinskiGeometry, tetrahedronVertices } from './sierpinski.js';
+import { buildInfiniteZoomGeometry, tetrahedronVertices } from './sierpinski.js';
 
 const container = document.getElementById('app');
 const info = document.getElementById('info');
@@ -12,14 +12,17 @@ const DEFAULT_COLOR = '#3366ff';
 const DEFAULT_BG_TOP = '#1a2036';
 const DEFAULT_BG_BOTTOM = '#05060a';
 
-// The 3 non-apex corners never subdivide past this — they're the "one
-// resolution" part of the pyramid, far from the zoom focus.
+// The 3 non-apex/non-ancestor corners never subdivide past this — they're
+// the "one resolution" context part of the pyramid, away from whatever the
+// current zoom focus is.
 const SIDE_DEPTH = 3;
 // How deep the apex-chasing spine sits at the default, un-zoomed view.
 const BASE_SPINE_DEPTH = 4;
-// Hard ceiling so recursion (and float32 vertex precision, which runs out
-// around here regardless) can't run away at extreme zoom.
-const MAX_SPINE_DEPTH = 26;
+// Soft ceilings on how far either direction can go — geometry stays cheap
+// (linear in these) well past this, so these exist mainly to keep a single
+// frame's rebuild bounded, not because precision runs out.
+const MAX_SPINE_DEPTH = 30;
+const MAX_OUT_LEVEL = 30;
 
 // The fixed point the whole app pivots around: the apex of the tetrahedron.
 // It never changes (it's a fixed point of the fractal's construction) and
@@ -89,11 +92,12 @@ controls.target.copy(F);
 controls.enablePan = false;
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
-// Deep enough that the adaptive spine (below) has real room to keep
-// chasing the apex — this is what "infinite" zoom is bounded by now,
-// rather than a shallow, fixed dolly limit.
+// Wide open in both directions — the adaptive geometry below has real room
+// to keep chasing the apex when zooming in, or revealing ancestor context
+// when zooming out, so "infinite" isn't bounded by a shallow dolly limit
+// in either direction anymore.
 controls.minDistance = 1e-7;
-controls.maxDistance = 150;
+controls.maxDistance = 1e9;
 controls.update();
 
 const INITIAL_DISTANCE = inputCamera.position.distanceTo(F);
@@ -126,32 +130,34 @@ const material = new THREE.MeshStandardMaterial({
 });
 
 // The pyramid rotates and scales about this pivot, which sits exactly at F.
-// The mesh itself is offset by -F so its apex vertex lands precisely on the
-// pivot's local origin — meaning any rotation/scale the pivot receives
-// leaves that one vertex fixed at F, in world space, always.
+// The geometry itself is built in coordinates relative to the apex (apex at
+// local origin — see sierpinski.js), so the mesh needs no offset: any
+// rotation/scale the pivot receives leaves local (0,0,0) — the apex —
+// fixed at F, in world space, always.
 const pivot = new THREE.Group();
 pivot.position.copy(F);
 scene.add(pivot);
 
 let mesh = null;
 let currentSpineDepth = -1;
+let currentOutLevel = -1;
 
-function setSpineDepth(spineDepth) {
+function setDetail(spineDepth, outLevel) {
   currentSpineDepth = spineDepth;
-  const { geometry, triangleCount } = buildAdaptiveSierpinskiGeometry(spineDepth, SIDE_DEPTH);
+  currentOutLevel = outLevel;
+  const { geometry, triangleCount } = buildInfiniteZoomGeometry(spineDepth, outLevel, SIDE_DEPTH);
 
   if (mesh) {
     pivot.remove(mesh);
     mesh.geometry.dispose();
   }
   mesh = new THREE.Mesh(geometry, material);
-  mesh.position.copy(F).negate();
   pivot.add(mesh);
 
   return triangleCount;
 }
 
-let lastTriangleCount = setSpineDepth(BASE_SPINE_DEPTH);
+let lastTriangleCount = setDetail(BASE_SPINE_DEPTH, 0);
 
 // Converts the input camera's current orbit (its rotation around F and its
 // distance from F) into an equivalent rotation + uniform scale of the
@@ -175,23 +181,32 @@ function updatePivotFromInput() {
 
   // Each spine level doubles the apex corner's apparent size, so the depth
   // needed to keep its detail crisp at the current zoom is just log2(zoom)
-  // past the base depth — ceil() alone keeps it a fraction of a level
-  // ahead, which is enough for the rebuild (synchronous, same frame) to
-  // never lag behind what's on screen.
-  // The tiny epsilon absorbs floating-point noise from the damped orbit
-  // math so zoom values that are "1.0" in every way that matters don't
-  // occasionally round up to the next depth level.
-  const requiredDepth = THREE.MathUtils.clamp(
-    BASE_SPINE_DEPTH + Math.ceil(Math.log2(zoom) - 1e-6),
+  // past the base depth. Symmetrically, zooming out past the pyramid's own
+  // boundary needs ancestor context revealed at the same rate in the other
+  // direction — log2(1/zoom) out-levels. Only one of the two is ever
+  // nonzero. The tiny epsilon absorbs floating-point noise from the damped
+  // orbit math so zoom values that are "1.0" in every way that matters
+  // don't occasionally round up past 0.
+  const logZoom = Math.log2(zoom);
+  const EPS = 1e-6;
+  const requiredSpineDepth = THREE.MathUtils.clamp(
+    BASE_SPINE_DEPTH + Math.ceil(Math.max(0, logZoom - EPS)),
     0,
     MAX_SPINE_DEPTH
   );
+  const requiredOutLevel = THREE.MathUtils.clamp(
+    Math.ceil(Math.max(0, -logZoom - EPS)),
+    0,
+    MAX_OUT_LEVEL
+  );
 
-  if (requiredDepth !== currentSpineDepth) {
-    lastTriangleCount = setSpineDepth(requiredDepth);
+  if (requiredSpineDepth !== currentSpineDepth || requiredOutLevel !== currentOutLevel) {
+    lastTriangleCount = setDetail(requiredSpineDepth, requiredOutLevel);
   }
 
-  info.textContent = `spine depth ${currentSpineDepth} · zoom ×${zoom.toFixed(zoom < 10 ? 2 : 0)} — ${lastTriangleCount.toLocaleString()} triangles`;
+  const zoomLabel =
+    zoom >= 1e5 || zoom < 1e-3 ? `${zoom.toExponential(2)}` : zoom.toFixed(zoom < 10 ? 3 : 0);
+  info.textContent = `spine ${currentSpineDepth} · horizon ${currentOutLevel} · zoom ×${zoomLabel} — ${lastTriangleCount.toLocaleString()} triangles`;
 }
 
 function animate() {

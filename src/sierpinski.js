@@ -77,7 +77,7 @@ function subdivideAdaptive(v0, v1, v2, v3, spineDepth, sideDepth, out) {
   subdivideAdaptive(v0, m01, m02, m03, spineDepth - 1, sideDepth, out);
 }
 
-function verticesToGeometry(verts, apex) {
+function verticesToGeometry(verts) {
   const positions = new Float32Array(verts.length * 3);
   for (let i = 0; i < verts.length; i++) {
     const v = verts[i];
@@ -90,20 +90,58 @@ function verticesToGeometry(verts, apex) {
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   geometry.computeVertexNormals();
 
-  return {
-    geometry,
-    triangleCount: verts.length / 3,
-    apex: apex.clone(),
-  };
+  return { geometry, triangleCount: verts.length / 3 };
 }
 
-// Builds a Sierpiński tetrahedron with detail concentrated toward the apex:
-// `spineDepth` controls how many times the apex corner recurses (unbounded
-// zoom-worthy detail near the tip), while `sideDepth` is the fixed depth
-// every other corner stops at, at every step along the way.
-export function buildAdaptiveSierpinskiGeometry(spineDepth, sideDepth, edge = 2) {
-  const [v0, v1, v2, v3] = tetrahedronVertices(edge);
+// Builds a Sierpiński tetrahedron with detail concentrated toward the apex
+// AND context extending outward from its base, entirely in coordinates
+// relative to the apex (the apex itself sits at local (0,0,0)). The caller
+// is expected to place the apex at its real world position via a transform
+// (translation), never by baking that offset into vertex data — that's
+// what keeps this precise at extreme zoom. Storing "large constant + tiny
+// offset" directly in a Float32Array silently rounds the tiny offset away
+// once it drops below roughly the constant's own magnitude times 1.2e-7
+// (float32's relative precision); a small number on its own has no such
+// floor, however deep the recursion goes.
+//
+// `spineDepth` controls how many times the apex corner recurses inward
+// (detail toward the tip); `outLevel` controls how many implied ancestor
+// tetrahedra — of which this one is exactly the apex corner, one nested
+// inside the next — have their other 3 corners revealed outward (context
+// as you zoom out past this pyramid's own boundary). `sideDepth` is the
+// fixed resolution every one of those side/ancestor corners stops at, in
+// both directions. All three keep triangle count linear in depth, so both
+// directions can go arbitrarily deep cheaply.
+export function buildInfiniteZoomGeometry(spineDepth, outLevel, sideDepth, edge = 2) {
+  const [worldApex, v1, v2, v3] = tetrahedronVertices(edge);
+  const apex = new THREE.Vector3(0, 0, 0);
+  let local1 = v1.clone().sub(worldApex);
+  let local2 = v2.clone().sub(worldApex);
+  let local3 = v3.clone().sub(worldApex);
+
   const verts = [];
-  subdivideAdaptive(v0, v1, v2, v3, spineDepth, sideDepth, verts);
-  return verticesToGeometry(verts, v0);
+  subdivideAdaptive(apex, local1, local2, local3, spineDepth, sideDepth, verts);
+
+  // Walk outward: at each step, (apex, local1, local2, local3) is exactly
+  // the apex corner of a tetrahedron twice its size (since midpoint(apex,
+  // 2*local_i) == local_i). Reveal that parent's other 3 corners, then
+  // adopt the parent's vertices as the new "current" ones and repeat.
+  for (let m = 0; m < outLevel; m++) {
+    const p1 = local1.clone().multiplyScalar(2);
+    const p2 = local2.clone().multiplyScalar(2);
+    const p3 = local3.clone().multiplyScalar(2);
+    const m12 = mid(p1, p2);
+    const m13 = mid(p1, p3);
+    const m23 = mid(p2, p3);
+
+    subdivide(local1, p1, m12, m13, sideDepth, verts);
+    subdivide(local2, m12, p2, m23, sideDepth, verts);
+    subdivide(local3, m13, m23, p3, sideDepth, verts);
+
+    local1 = p1;
+    local2 = p2;
+    local3 = p3;
+  }
+
+  return { ...verticesToGeometry(verts), apex: worldApex.clone() };
 }
