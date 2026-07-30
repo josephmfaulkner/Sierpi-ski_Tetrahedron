@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Sierpiński Tetrahedron — Infinite Zoom</title>
+    <title>Sierpiński Tetrahedron</title>
     <style>
       html,
       body {
@@ -20,23 +20,54 @@
       #app canvas {
         display: block;
       }
-      #info {
+      #panel {
         position: fixed;
         left: 16px;
         bottom: 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
         font: 12px/1.4 'SFMono-Regular', Consolas, Menlo, monospace;
-        color: rgba(255, 255, 255, 0.65);
-        background: rgba(0, 0, 0, 0.35);
-        padding: 8px 12px;
-        border-radius: 6px;
-        pointer-events: none;
+        color: rgba(255, 255, 255, 0.75);
+        background: rgba(0, 0, 0, 0.4);
+        padding: 12px 14px;
+        border-radius: 8px;
         user-select: none;
+      }
+      #panel .row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      #panel label {
+        min-width: 70px;
+      }
+      #panel input[type='range'] {
+        width: 140px;
+      }
+      #info {
+        opacity: 0.6;
+      }
+      #hint {
+        opacity: 0.45;
       }
     </style>
   </head>
   <body>
     <div id="app"></div>
-    <div id="info">initializing…</div>
+    <div id="panel">
+      <div class="row">
+        <label for="depth">Detail</label>
+        <input id="depth" type="range" min="0" max="7" step="1" value="4" />
+        <span id="depth-value">4</span>
+      </div>
+      <div class="row">
+        <label for="color">Color</label>
+        <input id="color" type="color" />
+      </div>
+      <div id="info">initializing…</div>
+      <div id="hint">drag to rotate · scroll to zoom</div>
+    </div>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

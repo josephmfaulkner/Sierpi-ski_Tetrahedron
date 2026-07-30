@@ -48,38 +48,21 @@ function subdivide(v0, v1, v2, v3, depth, out) {
   subdivide(m03, m13, m23, v3, depth - 1, out);
 }
 
-const _colorTop = new THREE.Color(0x8ab4ff);
-const _colorBottom = new THREE.Color(0xff5da2);
-const _tmpColor = new THREE.Color();
-
 export function buildSierpinskiGeometry(depth, edge = 2) {
   const [v0, v1, v2, v3] = tetrahedronVertices(edge);
   const verts = [];
   subdivide(v0, v1, v2, v3, depth, verts);
 
   const positions = new Float32Array(verts.length * 3);
-  const colors = new Float32Array(verts.length * 3);
-
-  const zApex = v0.z;
-  const zBottom = Math.min(v1.z, v2.z, v3.z);
-  const zRange = zApex - zBottom;
-
   for (let i = 0; i < verts.length; i++) {
     const v = verts[i];
     positions[i * 3] = v.x;
     positions[i * 3 + 1] = v.y;
     positions[i * 3 + 2] = v.z;
-
-    const t = THREE.MathUtils.clamp((zApex - v.z) / zRange, 0, 1);
-    _tmpColor.copy(_colorTop).lerp(_colorBottom, t);
-    colors[i * 3] = _tmpColor.r;
-    colors[i * 3 + 1] = _tmpColor.g;
-    colors[i * 3 + 2] = _tmpColor.b;
   }
 
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   geometry.computeVertexNormals();
 
   return {
