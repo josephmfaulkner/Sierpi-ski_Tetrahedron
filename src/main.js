@@ -12,6 +12,12 @@ const speedSlider = document.getElementById('speed');
 const speedValue = document.getElementById('speed-value');
 const sideDepthSlider = document.getElementById('side-depth');
 const sideDepthValue = document.getElementById('side-depth-value');
+const panel = document.getElementById('panel');
+const panelToggle = document.getElementById('panel-toggle');
+const fullscreenToggle = document.getElementById('fullscreen');
+const aboutButton = document.getElementById('about-button');
+const aboutDialog = document.getElementById('about-dialog');
+const aboutClose = document.getElementById('about-close');
 
 const DEFAULT_COLOR = '#c2c2c2';
 const DEFAULT_BG_TOP = '#6496c3';
@@ -390,6 +396,51 @@ sideDepthSlider.addEventListener('input', () => {
   sideDepthValue.textContent = String(sideDepth);
   lastTriangleCount = setDetail(currentSpineDepth, currentOutLevel);
 });
+
+panelToggle.addEventListener('click', () => {
+  const collapsed = panel.classList.toggle('collapsed');
+  panelToggle.textContent = collapsed ? 'Show panel' : 'Hide panel';
+});
+
+aboutButton.addEventListener('click', () => aboutDialog.showModal());
+aboutClose.addEventListener('click', () => aboutDialog.close());
+// Clicking the backdrop (outside the dialog's own content) also closes it —
+// such a click's target is the <dialog> itself, never a descendant.
+aboutDialog.addEventListener('click', (e) => {
+  if (e.target === aboutDialog) aboutDialog.close();
+});
+
+// Cross-browser Fullscreen API access — Safari still ships webkit-prefixed
+// entry points alongside (or instead of) the unprefixed ones.
+function requestFullscreen(el) {
+  const fn = el.requestFullscreen || el.webkitRequestFullscreen;
+  return fn ? fn.call(el) : Promise.reject(new Error('Fullscreen API unsupported'));
+}
+function exitFullscreen() {
+  const fn = document.exitFullscreen || document.webkitExitFullscreen;
+  return fn ? fn.call(document) : Promise.resolve();
+}
+function isFullscreen() {
+  return Boolean(document.fullscreenElement || document.webkitFullscreenElement);
+}
+
+fullscreenToggle.addEventListener('change', () => {
+  if (fullscreenToggle.checked) {
+    requestFullscreen(document.documentElement).catch(() => {
+      fullscreenToggle.checked = false;
+    });
+  } else if (isFullscreen()) {
+    exitFullscreen();
+  }
+});
+
+// Keeps the checkbox truthful if fullscreen is left via Escape or other
+// browser UI, rather than the checkbox itself.
+function syncFullscreenToggle() {
+  fullscreenToggle.checked = isFullscreen();
+}
+document.addEventListener('fullscreenchange', syncFullscreenToggle);
+document.addEventListener('webkitfullscreenchange', syncFullscreenToggle);
 
 colorPicker.value = DEFAULT_COLOR;
 colorPicker.addEventListener('input', () => {

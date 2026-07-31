@@ -40,11 +40,20 @@
         align-items: center;
         gap: 8px;
       }
+
+
+      #panel .about-button-row {
+        margin-left: auto;
+        margin-right: 30px;
+      }
       #panel label {
         min-width: 70px;
       }
       #panel input[type='range'] {
         width: 90vw
+      }
+      #panel .value-display {
+        width: 2vw;
       }
       #info {
         opacity: 0.6;
@@ -52,6 +61,62 @@
       }
       #hint {
         opacity: 0.45;
+      }
+      #panel.collapsed {
+        display: none;
+      }
+      #panel-toggle {
+        position: fixed;
+        right: 14px;
+        bottom: 14px;
+        z-index: 10;
+        font: 12px/1.4 'SFMono-Regular', Consolas, Menlo, monospace;
+        color: rgba(255, 255, 255, 0.85);
+        background: rgba(0, 0, 0, 0.55);
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        border-radius: 6px;
+        padding: 6px 10px;
+        cursor: pointer;
+        user-select: none;
+      }
+      #panel button {
+        font: inherit;
+        color: inherit;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        border-radius: 6px;
+        padding: 4px 10px;
+        cursor: pointer;
+      }
+      #about-dialog {
+        max-width: 480px;
+        color: rgba(255, 255, 255, 0.85);
+        background: #10131c;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 10px;
+        padding: 20px 22px;
+        font: 13px/1.6 'SFMono-Regular', Consolas, Menlo, monospace;
+      }
+      #about-dialog::backdrop {
+        background: rgba(0, 0, 0, 0.6);
+      }
+      #about-dialog h2 {
+        margin: 0 0 12px;
+        font-size: 15px;
+        font-weight: 600;
+        color: #fff;
+      }
+      #about-dialog p {
+        margin: 0 0 12px;
+      }
+      #about-dialog button {
+        font: inherit;
+        color: inherit;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        border-radius: 6px;
+        padding: 6px 14px;
+        cursor: pointer;
       }
     </style>
   </head>
@@ -65,6 +130,10 @@
           <label for="animate">Animate</label>
         </div>
         <div class="row">
+          <input id="fullscreen" type="checkbox" />
+          <label for="fullscreen">Fullscreen</label>
+        </div>
+        <div class="row">
           <input id="color" type="color" />
           <label for="color">Color</label>
         </div>
@@ -73,21 +142,24 @@
           <label for="bg-top">Sky</label>
         </div>
         <div class="row">
-          
+
           <input id="bg-bottom" type="color" />
           <label for="bg-bottom">Ground</label>
+        </div>
+        <div class="row about-button-row">
+          <button id="about-button" type="button">About</button>
         </div>
       </div>
 
       <div class="row">
         <label for="speed">Speed</label>
-        <span id="speed-value">1</span>
+        <span class="value-display" id="speed-value">1</span>
         <input id="speed" type="range" min="0" max="50" step="1" value="1" />
         
       </div>
       <div class="row">
         <label for="side-depth">Detail</label>
-        <span id="side-depth-value">3</span>
+        <span class="value-display" id="side-depth-value">3</span>
         <input id="side-depth" type="range" min="0" max="6" step="1" value="3" />
         
       </div>
@@ -98,6 +170,28 @@
         control
       </div>
     </div>
+    <button id="panel-toggle" type="button">Hide panel</button>
+    <dialog id="about-dialog">
+      <h2>Sierpiński Tetrahedron</h2>
+      <p>
+        A Sierpiński tetrahedron (or "tetrix") is the 3D counterpart of the Sierpiński triangle.
+        Start with a solid tetrahedron, replace it with 4 half-scale copies of itself — one
+        anchored at each corner — and discard the octahedron-shaped gap left in the middle. Repeat
+        that on each of the 4 copies, forever. The result is a fractal: an infinitely detailed,
+        perfectly self-similar shape with zero volume but infinite surface area, where the same
+        pattern reappears at every scale, no matter how far you zoom.
+      </p>
+      <p>
+        This project is an interactive, indefinitely zoomable 3D rendering of that fractal, built
+        with three.js. Because the shape is exactly self-similar, the tip at any zoom level is a
+        perfect miniature copy of the whole thing — so rather than pre-building impossibly deep
+        geometry, it renders only a thin "spine" of detail chasing the current zoom target (plus a
+        fixed slice of context to the sides, and, when zooming out, the ancestor shape the view is
+        actually just one corner of), regenerating it on the fly to keep the triangle count small
+        no matter how far in or out you go.
+      </p>
+      <button id="about-close" type="button">Close</button>
+    </dialog>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
