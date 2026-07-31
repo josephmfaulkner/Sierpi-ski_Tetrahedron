@@ -4,6 +4,8 @@ An interactive, indefinitely zoomable 3D Sierpiński tetrahedron (tetrix) fracta
 
 [Try the live demo here](https://josephmfaulkner.github.io/Sierpi-ski_Tetrahedron/)
 
+Vibecoded with [Claude Code](https://claude.com/claude-code).
+
 ## Controls
 
 - Drag to rotate, scroll to zoom, right-click drag to move
